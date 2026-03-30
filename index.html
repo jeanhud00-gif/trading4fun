@@ -874,7 +874,7 @@ function fireNews(){
   const isShock=Math.random()<0.06;
   const pool=NEWS_POOL.filter(n=>!!n.shock===isShock);
   const news=(pool.length?pool:NEWS_POOL)[Math.floor(Math.random()*(pool.length||NEWS_POOL.length))];
-  newsModifiers.push({impact:news.impact*0.004,rem:news.dur});
+  newsModifiers.push({impact:news.impact*0.001,rem:news.dur});
   newsHistory.unshift({...news});
   if(newsHistory.length>30) newsHistory.pop();
   showNewsPopup(news);
