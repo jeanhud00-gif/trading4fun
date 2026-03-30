@@ -336,6 +336,10 @@ const BASE_DRIFT=0.0001, BASE_VOLA=0.006;
 const CANDLE_MS=1400, MAX_CANDLES=800;
 const STOP_OUT=50, PAD={top:28,bot:62,left:8,right:76};
 
+// Frais de trading
+const SPREAD_PCT  = 0.0008;  // 0.08% — écart bid/ask appliqué au prix d'entrée
+const COMMIS_PCT  = 0.0006;  // 0.06% du notionnel à l'ouverture ET à la clôture
+
 function weekTarget(n){ return Math.round(START_CAP*Math.pow(1.60,n)); }
 function weekDuration(n){ return Math.max(100,220-n*13); }
 
@@ -737,17 +741,27 @@ function openPos(type){
     if(tpV&&tpV>=price){toast('TP doit être < prix actuel','b');return;}
     if(slV&&slV<=price){toast('SL doit être > prix actuel','b');return;}
   }
+  // Spread : long paie ask (prix + spread), short paie bid (prix - spread)
+  const spread   = price * SPREAD_PCT;
+  const entryPrice = type==='long' ? price + spread : price - spread;
+  // Commission à l'ouverture (déduite du solde immédiatement)
+  const commOpen = size * COMMIS_PCT;
+  if(commOpen > fm){toast('Marge insuffisante (frais inclus)','r');return;}
+  balance -= commOpen;
   idleCount=0;
-  positions.push({id:nextId++,type,entry:price,units:size/price,notional:size,leverage:lev,margin,tp:tpV,sl:slV});
-  toast(`${type==='long'?'▲ ACHAT':'▼ VENTE'} @ ${price.toFixed(2)}`,'b');
+  positions.push({id:nextId++,type,entry:entryPrice,units:size/entryPrice,notional:size,leverage:lev,margin,tp:tpV,sl:slV,commOpen});
+  toast(`${type==='long'?'▲ ACHAT':'▼ VENTE'} @ ${entryPrice.toFixed(2)} | frais: -$${commOpen.toFixed(2)}`,'b');
   refreshUI();
 }
 
 function closePos(id,reason='Manuel'){
   const idx=positions.findIndex(p=>p.id===id);if(idx===-1)return;
   const pos=positions[idx],pnl=calcPnL(pos);
-  balance+=pnl;positions.splice(idx,1);
-  toast(`Fermé (${reason}): ${pnl>=0?'+':''}$${pnl.toFixed(2)}`,pnl>=0?'g':'r');
+  // Commission à la clôture
+  const commClose = pos.notional * COMMIS_PCT;
+  const net = pnl - commClose;
+  balance+=net;positions.splice(idx,1);
+  toast(`Fermé (${reason}): ${net>=0?'+':''}$${net.toFixed(2)} (frais: -$${commClose.toFixed(2)})`,net>=0?'g':'r');
   refreshUI();
 }
 
@@ -1079,8 +1093,12 @@ function refreshUI(){
 function refreshPreview(){
   const size=parseFloat(document.getElementById('inp-size').value)||0;
   const lev=parseInt(document.getElementById('lev-slider').value)||1;
+  const commTotal=(size*COMMIS_PCT*2).toFixed(2);   // ouverture + clôture
+  const spreadCost=(size*SPREAD_PCT).toFixed(2);
+  const totalFees=(parseFloat(commTotal)+parseFloat(spreadCost)).toFixed(2);
   document.getElementById('margin-preview').innerHTML=
-    `Marge requise&nbsp;: <b>$${(size/lev).toFixed(0)}</b> &nbsp;|&nbsp; Notionnel&nbsp;: <b>$${size.toFixed(0)}</b>`;
+    `Marge&nbsp;: <b>$${(size/lev).toFixed(0)}</b> &nbsp;|&nbsp; Notionnel&nbsp;: <b>$${size.toFixed(0)}</b><br>`+
+    `<span style="color:var(--red)">Frais A/R&nbsp;: -$${totalFees} (spread $${spreadCost} + comm. $${commTotal})</span>`;
 }
 
 function refreshPosList(){
