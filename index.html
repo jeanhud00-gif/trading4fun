@@ -340,7 +340,7 @@ const STOP_OUT=50, PAD={top:28,bot:62,left:8,right:76};
 const SPREAD_PCT  = 0.0008;  // 0.08% — écart bid/ask appliqué au prix d'entrée
 const COMMIS_PCT  = 0.0006;  // 0.06% du notionnel à l'ouverture ET à la clôture
 
-function weekTarget(n){ return Math.round(START_CAP*Math.pow(3.00,n)); }
+function weekTarget(n){ return Math.round(START_CAP*Math.pow(2.20,n)); }
 function weekDuration(n){ return Math.max(100,220-n*13); }
 
 // ═══════════════════════════════════════════════════════════
