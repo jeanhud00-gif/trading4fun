@@ -485,6 +485,7 @@ let gs='intro', week=0, weekTimer=0, timerHandle=null, candleHandle=null;
 let weekStartBalance=START_CAP, weekTarget_=0;
 let weekEquityLog=[];
 let newsModifiers=[], newsHistory=[], newsCountdown=0;
+let weekSentiment=0; // drift accumulé en cours de semaine (permanent jusqu'au vendredi)
 
 // Panel resize
 let panelW=245, resizing=false, resizeX0=0, resizeW0=0;
@@ -513,13 +514,21 @@ window.addEventListener('resize',resize);
 // ═══════════════════════════════════════════════════════════
 // PRICE GENERATION
 // ═══════════════════════════════════════════════════════════
+// Approximation de Φ (CDF normale centrée réduite) — précision ~0.5%
+function cdfNormal(z){
+  const t=1/(1+0.2316419*Math.abs(z));
+  const d=0.3989423*Math.exp(-z*z/2);
+  const p=d*t*(0.3193815+t*(-0.3565638+t*(1.7814779+t*(-1.8212560+t*1.3302744))));
+  return z>=0 ? 1-p : p;
+}
+
 function randn(){
   let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();
   return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
 }
 function newsImpactSum(){return newsModifiers.reduce((s,m)=>s+m.impact,0);}
 function newCandle(){
-  const eff=BASE_DRIFT+newsImpactSum();
+  const eff=BASE_DRIFT+weekSentiment+newsImpactSum();
   const prev=candles.length?candles[candles.length-1].close:START_PRICE;
   const ret=eff+randn()*BASE_VOLA;
   const open=prev, close=Math.max(open*(1+ret),1);
@@ -874,7 +883,8 @@ function fireNews(){
   const isShock=Math.random()<0.06;
   const pool=NEWS_POOL.filter(n=>!!n.shock===isShock);
   const news=(pool.length?pool:NEWS_POOL)[Math.floor(Math.random()*(pool.length||NEWS_POOL.length))];
-  newsModifiers.push({impact:news.impact*0.001,rem:news.dur});
+  newsModifiers.push({impact:news.impact*0.001,rem:news.dur}); // burst temporaire
+  weekSentiment+=news.impact*0.0003; // résidu permanent cette semaine
   newsHistory.unshift({...news});
   if(newsHistory.length>30) newsHistory.pop();
   showNewsPopup(news);
@@ -926,7 +936,7 @@ function updateTicker(){
 function startGame(){
   balance=START_CAP;price=START_PRICE;positions=[];
   drawings=[];candles=[];viewOff=0;
-  newsModifiers=[];newsHistory=[];newsCountdown=0;
+  newsModifiers=[];newsHistory=[];newsCountdown=0;weekSentiment=0;
   marcCountdown=12;urgencySent=false;idleCount=0;
   lastEquitySnap=START_CAP;snapInterval=0;marcActive=false;
   for(let i=0;i<80;i++) newCandle();
@@ -941,6 +951,7 @@ function beginWeek(n){
   weekEquityLog=[];
   weekTimer=weekDuration(n);
   newsCountdown=8+Math.floor(Math.random()*12);
+  weekSentiment=0;
   urgencySent=false; lastEquitySnap=balance; snapInterval=0; idleCount=0;
   showScreen(null);
   clearInterval(timerHandle);clearInterval(candleHandle);
@@ -1082,11 +1093,13 @@ function refreshUI(){
   fill.className=pct>=100?'over':pct<40?'danger':'';
   document.getElementById('obj-target').textContent='$'+fmtK(weekTarget_);
   document.getElementById('obj-cur').textContent='| $'+fmtK(eq);
-  const ni=newsImpactSum();
-  const nfx=document.getElementById('s-news-fx');
-  if(ni>0.008){nfx.textContent='HAUSSIER';nfx.style.color='var(--green)';}
-  else if(ni<-0.008){nfx.textContent='BAISSIER';nfx.style.color='var(--red)';}
-  else{nfx.textContent='NEUTRE';nfx.style.color='var(--dim)';}
+  // Sentiment = drift accumulé semaine + burst actif
+  const totalDrift = weekSentiment + newsImpactSum();
+  const pUp = Math.round(cdfNormal(totalDrift / BASE_VOLA) * 100);
+  const nfx = document.getElementById('s-news-fx');
+  if(totalDrift > 0.002)     { nfx.textContent=`HAUSSIER ${pUp}%`;        nfx.style.color='var(--green)'; }
+  else if(totalDrift < -0.002){ nfx.textContent=`BAISSIER ${100-pUp}%`;  nfx.style.color='var(--red)'; }
+  else                        { nfx.textContent=`NEUTRE ${pUp}%`;        nfx.style.color='var(--dim)'; }
   updateTimerUI();refreshPreview();refreshPosList();
 }
 
